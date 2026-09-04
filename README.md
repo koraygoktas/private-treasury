@@ -2,6 +2,8 @@
 
 A tokenized treasury bond (RWA) where compliance is **proven, not stored**.
 
+**Live on Sepolia:** [`0xCC1A66e266b563F498dffe1031B0D56Cd6a704A1`](https://sepolia.etherscan.io/address/0xCC1A66e266b563F498dffe1031B0D56Cd6a704A1#code) — source verified on Etherscan.
+
 ## The idea
 
 Most "compliant" security tokens keep a permanent on-chain whitelist:
@@ -15,14 +17,14 @@ mint or receive tokens, you present a signed, time-boxed **attestation**
 from a trusted off-chain compliance authority (the `attestor`) alongside
 your transaction:
 
-\`\`\`solidity
+```solidity
 function transferWithAttestation(
     address to,
     uint256 amount,
     Attestation calldata att,
     bytes calldata signature
 ) external returns (bool);
-\`\`\`
+```
 
 The contract checks the signature and the expiry on the spot, then
 forgets it. Nothing about who is compliant is ever written to storage —
@@ -49,14 +51,14 @@ can be pulled if needed. The `attestor` never touches the chain to
 
 ## How compliance verification works (EIP-712)
 
-\`\`\`solidity
+```solidity
 struct Attestation {
     address investor;
     uint64  expiry;
     bytes32 jurisdiction;
     uint256 nonce;
 }
-\`\`\`
+```
 
 1. The attestor signs `Attestation` off-chain using EIP-712 typed data
    (domain-separated, so a signature can't be replayed against a
@@ -83,9 +85,51 @@ and signature recovery (via inline assembly reading `r`/`s`/`v` from
 | `transferOwnership(address)` | `onlyOwner` | Rotate the issuer |
 | `transfer` / `transferFrom` | — | Disabled, always revert (`DirectTransferDisabled`) |
 
+## Web demo
+
+`web/index.html` is a single-file, dependency-light (ethers.js via CDN)
+interactive demo — no build step, just open it in a browser with
+MetaMask installed. It walks through the entire compliance flow:
+
+1. **Connect** your wallet and load the deployed contract by address.
+2. **Sign an attestation** — simulates the off-chain attestor issuing a
+   time-boxed credential for a specific investor address, entirely
+   client-side via EIP-712 typed-data signing.
+3. **Issue (mint)** new bonds to that investor as the contract owner.
+4. **Transfer with attestation** to move tokens to a compliant
+   recipient — and watch it get live-decoded, human-readable revert
+   reasons (`AttestationExpired`, `AttestationInvestorMismatch`,
+   `InvalidSignature`, etc.) when the attestation doesn't check out.
+
+### Running it locally
+
+```bash
+# terminal 1
+anvil
+
+# terminal 2 — deploy (see "Deploy" below), then serve the demo, e.g.:
+npx http-server web -p 5500
+```
+
+In MetaMask, add a network pointing at `http://127.0.0.1:8545`
+(chain ID `31337`) and import one of anvil's printed test accounts.
+Paste the deployed contract address into the page and go.
+
+### Security note
+
+The "attestor private key" field in the demo exists purely to simulate
+off-chain signing in a self-contained page — in a real deployment, the
+attestor never runs in a browser. That signing step lives behind an
+API/service backed by proper key custody (HSM, cloud KMS, etc. — see
+this author's companion project,
+[`secure-key-managment`](https://github.com/koraygoktas/secure-key-managment),
+for exactly that problem). Only ever paste a local/testnet throwaway
+key into this demo — the input is masked, but it is still a demo tool,
+not a wallet.
+
 ## Project structure
 
-\`\`\`
+```
 private-treasury/
 ├── src/
 │   └── PrivateTreasury.sol       # the contract
@@ -93,24 +137,26 @@ private-treasury/
 │   └── PrivateTreasury.t.sol     # 14 tests: issuance, transfer, revocation, admin
 ├── script/
 │   └── Deploy.s.sol              # deploy script (reads OWNER_ADDRESS / ATTESTOR_ADDRESS)
+├── web/
+│   └── index.html                # interactive demo (ethers.js, no build step)
 ├── .env.example
 └── README.md
-\`\`\`
+```
 
 ## Setup
 
-\`\`\`bash
+```bash
 git clone https://github.com/koraygoktas/private-treasury.git
 cd private-treasury
 forge install
 cp .env.example .env   # fill in OWNER_ADDRESS / ATTESTOR_ADDRESS / SEPOLIA_RPC_URL
-\`\`\`
+```
 
 ## Test
 
-\`\`\`bash
+```bash
 forge test -vv
-\`\`\`
+```
 
 14 tests covering: valid/invalid issuance, expired/revoked/mismatched
 attestations, bad signatures, attestor rotation invalidating old
@@ -119,7 +165,7 @@ and confirming direct `transfer`/`transferFrom` are hard-disabled.
 
 ## Deploy (local)
 
-\`\`\`bash
+```bash
 # terminal 1
 anvil
 
@@ -129,7 +175,17 @@ forge script script/Deploy.s.sol:Deploy \
   --private-key <anvil-account-0-private-key> \
   --sender <anvil-account-0-address> \
   --broadcast -vvvv
-\`\`\`
+```
+
+## Known limitations (by design, for a demo)
+
+- The web demo signs attestations client-side for simplicity — a real
+  system moves that behind an authenticated backend service.
+- No per-attestation "used" flag: the same signed attestation can be
+  reused for multiple calls until it expires or is explicitly revoked.
+  Add a nonce-consumption mapping if single-use semantics are required.
+- Single `attestor` role — production systems would likely support
+  multiple attestors/jurisdictions and role-based revocation.
 
 ## License
 

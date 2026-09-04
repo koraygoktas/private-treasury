@@ -1,20 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @title PrivateTreasury
-/// @notice A tokenized treasury bond where compliance is proven, not stored.
-///
-/// Most "compliant" RWA tokens keep a permanent on-chain whitelist
-/// (mapping(address => bool)) that anyone can read to see exactly who is
-/// KYC'd. This contract does something different: standard transfers are
-/// disabled entirely. To receive tokens, you present a signed, expiring
-/// "attestation" from a trusted off-chain compliance authority (the
-/// `attestor`) alongside your transaction. The contract verifies the
-/// signature and expiry on the spot -- no permanent list is ever written.
-/// The attestor never pays gas and never has write access to this
-/// contract; issuing a credential is just signing a message off-chain.
 contract PrivateTreasury {
-    // ---- ERC-20 metadata ----
+    // ERC-20 metadata
     string public constant name = "Private Treasury Bond";
     string public constant symbol = "pTBOND";
     uint8 public constant decimals = 18;
@@ -26,9 +14,8 @@ contract PrivateTreasury {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
-    // ---- Roles ----
-    address public owner; // treasury issuer: mints new bonds to compliant investors
-    address public attestor; // off-chain compliance authority: signs attestations
+    address public owner; 
+    address public attestor; 
 
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event AttestorUpdated(address indexed previousAttestor, address indexed newAttestor);
@@ -43,7 +30,6 @@ contract PrivateTreasury {
         _;
     }
 
-    // ---- Errors ----
     error NotOwner();
     error NotAttestor();
     error ZeroAddress();
@@ -54,7 +40,6 @@ contract PrivateTreasury {
     error DirectTransferDisabled();
     error InsufficientBalance();
 
-    // ---- EIP-712 compliance attestation ----
     struct Attestation {
         address investor;
         uint64 expiry;
@@ -88,8 +73,6 @@ contract PrivateTreasury {
             )
         );
     }
-
-    // ---- Compliance verification ----
 
     function hashAttestation(Attestation calldata att) public pure returns (bytes32) {
         return keccak256(abi.encode(ATTESTATION_TYPEHASH, att.investor, att.expiry, att.jurisdiction, att.nonce));
@@ -126,8 +109,6 @@ contract PrivateTreasury {
         return ecrecover(digest, v, r, s);
     }
 
-    // ---- Issuance (mint) ----
-
     function issue(address investor, uint256 amount, Attestation calldata att, bytes calldata signature)
         external
         onlyOwner
@@ -137,8 +118,6 @@ contract PrivateTreasury {
         balanceOf[investor] += amount;
         emit Transfer(address(0), investor, amount);
     }
-
-    // ---- Attestation-gated transfer ----
 
     function transferWithAttestation(
         address to,
@@ -158,14 +137,11 @@ contract PrivateTreasury {
         return true;
     }
 
-    // ---- Revocation ----
 
     function revokeAttestation(bytes32 attestationHash) external onlyAttestor {
         revokedAttestations[attestationHash] = true;
         emit AttestationRevokedEvent(attestationHash);
     }
-
-    // ---- Admin ----
 
     function setAttestor(address newAttestor) external onlyOwner {
         if (newAttestor == address(0)) revert ZeroAddress();
@@ -179,7 +155,6 @@ contract PrivateTreasury {
         owner = newOwner;
     }
 
-    // ---- Standard ERC-20 surface ----
 
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
